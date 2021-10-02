@@ -4,33 +4,74 @@ import random
 import time
 from socket import *
 import sys
+import json
 
-#NUM_PLAYERS = sys.argv[1]
+if len(sys.argv) != 1:
+    MAX_PLAYERS = sys.argv[1]
+else:
+    MAX_PLAYERS = 4
 # Global current move
 current_move = None
 
 
-def server_client(connection_socket, ID):
-    global current_move
+def update_client(connection_socket=None, ID=None):
+    # Mensagem antiga (n usando dict)
+    '''mes = ''
+    if ID is not None:
+        mes += 'ID ' + str(ID) + '/'
+    if connection_socket is not None:
+        mes += 'HAND ' + str(game.players[ID].get_hand()) + '/'
+    mes += 'TURN ' + str(game.player_turn) + '/'
+    if len(game.discards) > 0:
+        mes += 'LAST ' + str(game.discards[-1].name) + '/'
+    else:
+        mes += 'LAST ' + 'None' + '/'
+    mes += 'PNUM ' + str(game.num_players) + '/'
+    mes += 'PNUMC ' + str(game.att_ncards_players())
+    print(mes)'''
+    # Mensagem nova (usando dict)
+    global sockets_connected
+    mes = dict()
+    if ID is not None:
+        mes['ID'] = ID
+    if connection_socket is not None:
+        mes['HAND'] = game.players[ID].get_hand()
+    mes['TURN'] = game.player_turn
+    if len(game.discards) > 0:
+        mes['LAST'] = game.discards[-1].name
+    mes['PNUM'] = game.num_players
+    mes['PNUMC'] = game.att_ncards_players()
+    mes['DRS'] = game.draw_sum
 
-    # Checa se é o dono da partida
-    while (not game.started) and (game.player_turn != ID):
+    if connection_socket is None:
+        for socket in sockets_connected:
+            socket.send(json.dumps(mes).encode())
+    else:
+        connection_socket.send(json.dumps(mes).encode())
+    time.sleep(0.1)
+
+
+def server_client(connection_socket, ID):
+    global current_move, sockets_connected
+    update_client(connection_socket, ID)
+    # Segura players pre game
+    while not game.started:
+        update_client()
         time.sleep(0.5)
 
-    while 1:
-
+    while game.started:
+        print(f'Client {ID} here')
+        update_client(connection_socket, ID)
         while game.player_turn != ID:
-            if not game.started:
-                break
             time.sleep(0.5)
-
+        update_client(connection_socket, ID)
+        print(f'Client {ID} here3')
         print('Thread server_client waiting player ', ID, ' turn...')
         try:
             sentence = connection_socket.recv(1024)
         except Exception as msg:
             print("Caught exception: %s" % msg)
             break
-
         # No data receiving
         if sentence is None:
             print('No data receiving')
@@ -42,32 +83,33 @@ def server_client(connection_socket, ID):
             connection_socket.send('Invalid syntax of uno protocol.'.encode())
             continue
 
-        # START: 0,
+        # SKIP: 0,
         # BUY: 0,
         # PUT: BLUE 8 0
         #
         print(sentence)
 
         # Verifica procedencia dos comandos
-        start, buy, put = sentence.split(',', 3)
+        skip, buy, put = sentence.split(',', 3) # ValueError: too many values to unpack (expected 3) (sometimes)
         if len(put.split()) < 3:
             connection_socket.send('Invalid syntax of uno protocol.'.encode())
             continue
         garbage, colour, value, wild = put.split(None, 3)
-        print('start: ', start)
+        print('skip: ', skip)
         print('buy: ', buy)
         print('put: ', put)
         card = None
-        if put != '0 0 0':
+        print(buy)
+        if skip == ' SKIP: 0':
+            code = 'skip'
+        elif buy == ' BUY: 1':
+            code = 'buy'
+        elif put != ' PUT: 0 0 0':
             if wild != '0':
                 card = Card(colour=colour, wild=wild)
             else:
                 card = Card(colour, value)
             code = 'put'
-        elif start == '1':
-            code = 'start'
-        elif buy == '1':
-            code = 'buy'
         else:
             code = 'exit'
 
@@ -90,24 +132,18 @@ def server_client(connection_socket, ID):
         __current_move_lock.release()
 
         # Send back the process data
-        mes = ''
-        mes += 'ID ' + str(ID) + '/'
-        mes += 'TURN ' + str(game.player_turn) + '/'
-        mes += 'HAND ' + str(game.players[ID].get_hand()) + '/'
-        mes += 'LAST ' + str(game.discards[-1].name)+'/'
-        mes += 'PNUM ' + str(game.num_players) + '/'
-        mes += 'PNUMC ' + str(game.att_ncards_players())
-        print(mes)
-        connection_socket.send(mes.encode())
+        update_client(connection_socket, ID)
         time.sleep(1.0)
 
-    connection_socket.close()
+    for socket in sockets_connected:
+        socket.close()
 
 
 def server():
 
     global current_move
     global game
+    global sockets_connected
     game = Game()
 
     server_port = 8888
@@ -115,13 +151,14 @@ def server():
     server_socket = socket(AF_INET, SOCK_STREAM)
     server_socket.bind((server_ip, server_port))
     server_socket.listen(4)
-    server_socket.settimeout(30)
+    server_socket.settimeout(60)
 
     sockets_connected = []
     threads_in_execution = []
 
     # Espera por players
-    while (not game.started) and (game.num_players < 2):
+    while (not game.started) and (game.num_players < MAX_PLAYERS):
+        update_client()
         if game.num_players != 0:
             __game_started.release()
             print('Thread game release')
@@ -157,7 +194,7 @@ def server():
             game.play(current_move[0], current_move[1])
             current_move = None
             __current_move_lock.release()
-
+    # Reinicar game ***
 
 class Game:
     def __init__(self):
@@ -171,6 +208,7 @@ class Game:
         self.started = False
         self.max_players = 4
         self.draw_sum = 0
+        self.tunr_list = [x for x in range(self.max_players)]
 
     def add_player(self, player):
         if self.num_players >= self.max_players:
@@ -186,18 +224,18 @@ class Game:
 
     def build_deck(self):
         deck = list()
-        colours = ['red', 'blue', 'green', 'yellow']
+        colours = ['red_', 'blue_', 'green_', 'yellow_']
         values = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'draw_two', 'skip', 'reverse']
-        wilds = ['wild', 'wild_draw_four']
         for colour in colours:
             for value in values:
                 card = Card(colour, value)
                 deck.append(card)
                 if value != '0':
+                    card = Card(colour+'_', value)
                     deck.append(card)
         for i in range(4):
-            deck.append(Card(wild=wilds[0]))
-            deck.append(Card(wild=wilds[1]))
+            deck.append(Card(wild='wild_'+str(i)))
+            deck.append(Card(wild='wild_draw_four_'+str(i)))
         return deck
 
     def shuffle_deck(self, deck):
@@ -219,23 +257,43 @@ class Game:
 
     def next_player_turn(self):
         last_card = self.discards[-1]
-        if last_card.value is 'skip':
-            next_player = self.player_turn + (2 * self.play_direction)
+        if last_card.value == 'skip':
+            if (self.player_turn + (2*self.play_direction)) >= self.max_players:
+                next_player = abs(self.player_turn+(2*self.play_direction)) - self.max_players
+            elif (self.player_turn + (2*self.play_direction)) < 0:
+                next_player = self.max_players + self.player_turn - (2*self.play_direction)
+            else:
+                next_player = self.player_turn + (2 * self.play_direction)
         else:
             next_player = self.player_turn + (1 * self.play_direction)
-
-        if next_player < 0:
-            next_player = next_player * -1
-        elif next_player > (self.num_players - 1):
-            next_player = (next_player % self.num_players)
-
+            if next_player < 0:
+                next_player = self.max_players -1
+            elif next_player > (self.max_players - 1):
+                next_player = 0
         self.player_turn = next_player
 
     def can_play(self, card):
+        if self.draw_sum > 0:
+            if self.discards[-2].wild is not None:
+                print(f'Penultima +4 {self.discards[-2].wild} riririri')
+                if 'wild_draw_four' in self.discards[-2].wild:
+                    if card.wild is not None:
+                        if 'wild_draw_four' in card.wild:
+                            return True
+                        else:
+                            return False
+                    else:
+                        return False
+            else:
+                if 'draw_two' in self.discards[-1].value:
+                    if card.value == 'draw_two':
+                        return True
+                    else:
+                        return False
         last_colour = self.discards[-1].colour
         last_value = self.discards[-1].value
 
-        if card.value == last_value or card.colour.lower() == last_colour.lower() or card.wild is not None:
+        if card.value == last_value or card.colour.lower() in last_colour.lower()or last_colour.lower() in card.colour.lower()  or card.wild is not None:
             return True
         else:
             return False
@@ -259,24 +317,25 @@ class Game:
                 print('card of player[', player.ID, '] : ', card.colour, ' - ', card.value, ' - ',  card.wild)
 
     def play(self, move, card):
-        print('Playing: ', move, ' - ', card.name)
         if move == 'buy':
             if self.draw_sum > 0:
-                for i in range(self.draw_sum + 1):
+                for i in range(self.draw_sum ):
                     self.players[self.player_turn].hand.append(self.uno_deck.pop())
                 self.draw_sum = 0
             else:
                 self.players[self.player_turn].hand.append(self.uno_deck.pop())
 
         elif move == 'put':
+            print(f'can play {self.can_play(card)}')
             if self.can_play(card) and self.players[self.player_turn].put_card(card):
                 self.discards.append(card)
                 if self.discards[-1].wild is not None:
-                    if self.discards[-1].wild == 'wild_draw_four':
+                    if 'wild_draw_four' in self.discards[-1].wild:
                         self.discards[-1].apply_effects()
-                    self.discards.append(Card(card.colour, '--'))
+                    self.discards.append(Card(card.colour, ''))
 
                 print('PLAYED!: ', card.colour, '-', card.value, '-', card.wild)
+                self.discards[-1].apply_effects()
             else:
                 print('Cannot play: ', card.colour, '-', card.value, '-', card.wild)
                 return
@@ -288,7 +347,6 @@ class Game:
             return
 
         # Faz o efeito da carta e vai para próximo jogador
-        self.discards[-1].apply_effects()
         self.next_player_turn()
         print('Last placed card is: ', self.discards[-1].colour, ' - ', self.discards[-1].value, ' - ', self.discards[-1].wild)
         print('Player turn is: ', self.player_turn)
@@ -310,8 +368,8 @@ class Player:
 
     def put_card(self, card):
         for actual_card in self.hand:
-            if card.wild is not None:
-                if actual_card.wild == card.wild:
+            if card.wild is not None and actual_card.wild is not None:
+                if (actual_card.wild in card.wild) or (card.wild in actual_card.wild):
                     self.hand.remove(actual_card)
                     return True
             if actual_card.colour == card.colour.lower() and actual_card.value == card.value:
@@ -327,10 +385,10 @@ class Card:
         self.value = value
         self.wild = wild
         if wild is None:
-            self.name = self.colour+'_'+self.value
+            self.name = self.colour + self.value
         else:
             self.name = self.wild
-        if value == 'reverse' or value == 'skip' or wild is not None:
+        if value == 'reverse' or value == 'skip' or wild is not None or 'draw_two' in value:
             self.effect = True
         else:
             self.effect = False
@@ -342,10 +400,11 @@ class Card:
             elif self.value == 'skip':
                 # Done in game.next_player_turn()
                 pass
-            elif self.wild in 'wild_draw_four':
-                game.draw_sum += 4
-                print('Draw_sum: ', game.draw_sum)
-            elif 'draw_two' == self.value:
+            elif self.wild is not None:
+                if 'wild_draw_four' in self.wild:
+                    game.draw_sum += 4
+                    print('Draw_sum: ', game.draw_sum)
+            elif 'draw_two' in self.value:
                 game.draw_sum += 2
                 print('Draw_sum: ', game.draw_sum)
 

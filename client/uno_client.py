@@ -3,65 +3,93 @@ import threading
 import sys
 import pygame
 import operator
-import re
+import time
+import json
 
-SERVER_IP = sys.argv[1]
-SERVER_PORT = int(sys.argv[2])
-
-# Iniciando config da GUI
-pygame.init()
-size = width, height = 1200, 720
-black = 0, 0, 0
-screen = pygame.display.set_mode(size)
-
-colors = ['blue_', 'red_', 'yellow_', 'green_']
-path = "images/"
-extension = ".png"
+if len(sys.argv) > 1:
+    SERVER_IP = sys.argv[1]
+    SERVER_PORT = int(sys.argv[2])
+else:
+    SERVER_IP = '127.0.0.1'
+    SERVER_PORT = 8888
 
 
-# CONSTANTES
-global MESSAGE
-global PLAYER_ID
-global PLAYER_TURN
-global PLAYERS_NUM
-global P_NUM_CARDS
-global LAST_DISCARD
-global PLAYER_HAND
-global ERR
-deck = dict()
-PLAYER_ID = None
-PLAYER_TURN = 0
-PLAYERS_NUM = 2
-P_NUM_CARDS = [2, 4]
-LAST_DISCARD = 'red_6'
-PLAYER_HAND = ['red_7']
-ERR = None
+# CONSTANTS
 MESSAGE = 'INIT'
-# PROTOCOLO
+NEW_MESSAGE = False
+PLAYER_ID = None
+PLAYER_TURN = None
+PLAYERS_NUM = None
+P_NUM_CARDS = None
+LAST_DISCARD = None
+PLAYER_HAND = []
+DRAW_SUM = 0
+ERR = None
+MAX_PLAYERS = 4
+
+
+# PROTOCOL
 def update_consts(res):
-    print(res)
+    # update antigo
+    '''print(res)
     res2 = res.split('/')
     print(res2)
     res3 = [x.split(' ', 1)[1] for x in res2]
-    PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS  = res3
+    global PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS
+    PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS = res3
+    eval(PLAYER_ID)
     eval(PLAYER_TURN)
     eval(PLAYER_HAND)
-    eval(P_NUM_CARDS)
-    print(PLAYER_ID)
+    #eval(LAST_DISCARD)
+    eval(PLAYERS_NUM)
+    eval(P_NUM_CARDS)'''
+    # update novo
+    global PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS,DRAW_SUM
+    res_dict = json.loads(res)
+    if 'ID' in res_dict:
+        PLAYER_ID = res_dict.get('ID')
+    if 'HAND' in res_dict:
+        PLAYER_HAND = res_dict.get('HAND')
+    if 'LAST' in res_dict:
+        LAST_DISCARD = res_dict.get('LAST')
+    PLAYER_TURN = res_dict.get('TURN')
+    PLAYERS_NUM = res_dict.get('PNUM')
+    P_NUM_CARDS = res_dict.get('PNUMC')
+    DRAW_SUM = res_dict.get('DRS')
 
 
 def server_output(client_socket):
     while 1:
         att = client_socket.recv(1500)
-
-        print(update_consts(att.decode()))
+        att = att.decode()
+        print(f'Server response: {att}')
+        if len(att) > 0:
+            if '}{' in att:
+                att2 = att.split('}{')
+            update_consts(att)
 
 
 def client_input(client_socket):
+    global NEW_MESSAGE, MESSAGE
     while 1:
-        message = input('Enter the message: ')
-        client_socket.send(message.encode())
-        pass
+        if NEW_MESSAGE:
+            print(MESSAGE)
+            client_socket.send(MESSAGE.encode())
+            NEW_MESSAGE = False
+            time.sleep(0.1)
+
+
+def req(card, skip=False):
+    global NEW_MESSAGE, MESSAGE
+    if skip:
+        MESSAGE = f'SKIP: 1, BUY: 0, PUT: 0 0 0'
+    elif card.number == 666 or card.color == 'deck':
+        MESSAGE = f'SKIP: 0, BUY: 1, PUT: 0 0 0'
+    elif card.number is not None:
+        MESSAGE = f'SKIP: 0, BUY: 0, PUT: {card.color} {card.number} 0'
+    elif card.wild is not None:
+        MESSAGE = f'SKIP: 0, BUY: 0, PUT: {card.color} 0 {card.wild}'
+    NEW_MESSAGE = True
 
 
 def client():
@@ -79,7 +107,7 @@ def client():
 
 
 class Card:
-    def __init__(self, color=0, number=0, image_front=None, x=0, y=0, wild=None):
+    def __init__(self, color=None, number=None, image_front=None, x=0, y=0, wild=None):
         self.color = color
         self.number = number
         self.wild = wild
@@ -106,28 +134,30 @@ class Card:
         else:
             return False
 
-    def req(self, colour_wild_choice):
-        if self.number is not None:
-            m = f'START: 0, BUY: 0, PUT: {self.color} {self.number} 0'
-        elif self.wild is not None:
-            m = f'START: 0, BUY: 0, PUT: {self.colour_wild_choice} 0 {self.wild}'
-
-        else:
-            print(f'Movimento inválido')
-
 
 class Button:
-    def __init__(self, text, x, y, color):
+    def __init__(self, text, x, y, color=(0, 0, 0), width=100, height=30, p_id=0, upd_color=True, is_rect=True):
         self.text = text
         self.x = x
         self.y = y
         self.color = color
-        self.width = 50
-        self.height = 30
+        self.width = width
+        self.height = height
+        self.p_id = p_id
+        self.is_rect = is_rect
+        self.upd_color = upd_color
 
     def draw(self, win):
-        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.height))
-        font = pygame.font.SysFont("comicsans", 40)
+        global PLAYER_TURN
+        if PLAYER_TURN == self.p_id and self.upd_color:
+            color = (255,0,0)
+        else:
+            color = self.color
+        if self.is_rect:
+            pygame.draw.rect(win, color, (self.x, self.y, self.width, self.height))
+        else:
+            pygame.draw.circle(screen, (255, 0, 0), (600, 360), 60)
+        font = pygame.font.SysFont("comicsans", 25)
         text = font.render(self.text, 1, (255,255,255))
         win.blit(text, (self.x + round(self.width/2) - round(text.get_width()/2), self.y + round(self.height/2) - round(text.get_height()/2)))
 
@@ -140,39 +170,171 @@ class Button:
             return False
 
 
-values = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'draw_two', 'skip', 'reverse']
-wilds = ['wild', 'wild_draw_four']
+# Iniciando config da GUI
+pygame.init()
+size = width, height = 1200, 720
+black = 0, 0, 0
+screen = pygame.display.set_mode(size)
+colors = ['blue_', 'red_', 'yellow_', 'green_']
+path = "images/"
+extension = ".png"
+values = ['', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'draw_two', 'skip', 'reverse']
+deck = dict()
 for color in colors:
     for value in values:
-        c_name = str(color+value)
+        c_name = str(color + value)
         full_path = path + str(color) + str(value) + extension
-        deck[c_name]=(Card(color, value, pygame.image.load(full_path)))
+        deck[c_name] = (Card(color, value, pygame.image.load(full_path)))
+        if value != 0:
+            c_name = str(color + '_' + value)
+            full_path = path + str(color) + str(value) + extension
+            deck[c_name] = (Card(color+'_', value, pygame.image.load(full_path)))
 full_path = path + 'wild' + extension
-deck['wild']=(Card(image_front=pygame.image.load(full_path),wild=wilds[0]))
+for i in range(4):
+    deck['wild_'+str(i)] = (Card(image_front=pygame.image.load(full_path), wild='wild_'+str(i)))
 full_path = path + 'wild_draw_four' + extension
-deck['wild_draw_four']=(Card(image_front=pygame.image.load(full_path),wild=wilds[1]))
-PLAYER_HAND = [k for k in deck]
+for i in range(4):
+    deck['wild_draw_four_'+str(i)] = (Card(image_front=pygame.image.load(full_path), wild='wild_draw_four_'+str(i)))
 deck_card_image = pygame.image.load("images/card_back.png")
 deck_draw = Card('deck', 666, deck_card_image, x=670, y=249)
-btns = [Button("Play", 575, 307, (0, 0, 0)), Button("Skip", 575, 357, (255, 0, 0))]
-i = 0
-for card in PLAYER_HAND:
-    deck.get(card).x = i * 80
-    deck.get(card).y = 537
-    i += 1
-    deck.get(card).pos = deck.get(card).image.get_rect(x=deck.get(card).x, y=deck.get(card).y)
-deck.get(LAST_DISCARD).pos.update((400, 249), [130, 182])
+cards_p_image1 = pygame.image.load("images/card_back_alt1.png")
+cards_p_image2 = pygame.image.load("images/card_back_alt2.png")
+cards_p_image3 = pygame.image.load("images/card_back_alt3.png")
+card_p1 = Card('card_p1', None, cards_p_image1, x=535, y=0)
+card_p2 = Card('card_p2', None, cards_p_image2, x=0, y=295)
+card_p3 = Card('card_p3', None, cards_p_image3, x=1017, y=295)
+draw_count = Button("+0", 600, 360, (255, 0, 0), is_rect=False)
+pos_0 = Button("Player 0 || 7 Cards", 545, 500, (0, 0, 0), p_id=0)
+pos_1 = Button("Player 1 || 7 Cards", 545, 190, (0, 0, 0), p_id=1)
+pos_2 = Button("Player 2 || 7 Cards", 45, 260, (0, 0, 0), p_id=2)
+pos_3 = Button("Player 3 || 7 Cards", 1045, 260, (0, 0, 0), p_id=3)
+pos_btns = [pos_0, pos_1, pos_2, pos_3]
 
-def main():
+
+def def_pos_info(btns):
+    global PLAYER_ID, P_NUM_CARDS, MAX_PLAYERS
+    if btns is not None and len(P_NUM_CARDS) == MAX_PLAYERS:
+        if PLAYER_ID == 0:
+            btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
+            btns[0].p_id = 0
+            btns[1].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
+            btns[1].p_id = 2
+            if MAX_PLAYERS >= 3:
+                btns[2].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
+                btns[2].p_id = 1
+            if MAX_PLAYERS >= 4:
+                btns[3].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
+                btns[3].p_id = 3
+        elif PLAYER_ID == 1:
+            print(btns[0].text)
+            print(P_NUM_CARDS[PLAYER_ID])
+            btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
+            btns[0].p_id = 1
+            btns[1].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
+            btns[1].p_id = 3
+            if MAX_PLAYERS >= 3:
+                btns[2].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
+                btns[2].p_id = 2
+            if MAX_PLAYERS >= 4:
+                btns[3].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
+                btns[3].p_id = 0
+        elif PLAYER_ID == 2:
+            btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
+            btns[0].p_id = 2
+            btns[1].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
+            btns[1].p_id = 0
+            if MAX_PLAYERS >= 3:
+                btns[2].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
+                btns[2].p_id = 3
+            if MAX_PLAYERS >= 4:
+                btns[3].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
+                btns[3].p_id = 1
+        elif PLAYER_ID == 3:
+            btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
+            btns[0].p_id = 3
+            btns[1].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
+            btns[1].p_id = 1
+            if MAX_PLAYERS >= 3:
+                btns[2].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
+                btns[2].p_id = 0
+            if MAX_PLAYERS >= 4:
+                btns[3].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
+                btns[3].p_id = 2
+
+
+def winner():
+    global P_NUM_CARDS
+    P_NUM_CARDS = []
+    for n in P_NUM_CARDS:
+        if n == 0:
+            return P_NUM_CARDS.index(n)
+    return -1
+
+
+def winner_screen():
     run = True
-    client()
-    print("You are player", PLAYER_ID)
-
+    color_menu = pygame.display.set_mode(size)
     while run:
+        p_win = Button(f'Player {PLAYER_ID} win!', 575, 357, (255, 0, 0))
+        p_win.draw(color_menu)
+        pygame.display.update()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 run = False
+
+
+def game():
+    run = True
+    title = 'UNO - Player '+ str(PLAYER_ID)
+    pygame.display.set_caption(title)
+    while len(PLAYER_HAND) == 0:
+        time.sleep(0.5)
+    while run:
+        for event in pygame.event.get():
+            if PLAYER_ID == PLAYER_TURN:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if deck_draw.click(pygame.mouse.get_pos()):
+                        req(deck_draw)
+                    else:
+                        for card in PLAYER_HAND:
+                            if deck.get(card).click(pygame.mouse.get_pos()):
+                                if deck.get(card).wild is not None:
+                                    color_choice(deck.get(card))
+                                req(deck.get(card))
+            if event.type == pygame.QUIT:
+                sys.exit()
+        if winner() != -1:
+            winner_screen()
+            run = False
+
+        deck.get(LAST_DISCARD).pos.update((400, 249), [130, 182])
+        i = 0
+        for card in PLAYER_HAND:
+            deck.get(card).x = i * 80
+            deck.get(card).y = 537
+            i += 1
+            deck.get(card).pos = deck.get(card).image.get_rect(x=deck.get(card).x, y=deck.get(card).y)
+        screen.fill(black)
+        screen.blit(deck_draw.image, deck_draw.pos)
+        screen.blit(deck.get(LAST_DISCARD).image, deck.get(LAST_DISCARD).pos)
+        for card in PLAYER_HAND:
+            screen.blit(deck.get(card).image, deck.get(card).pos)
+        draw_count.text = f'+{DRAW_SUM}'
+        draw_count.draw(screen)
+        def_pos_info(pos_btns)
+        if PLAYERS_NUM >= 2:
+            screen.blit(card_p1.image, card_p1.pos)
+            pos_0.draw(screen)
+            pos_1.draw(screen)
+        if PLAYERS_NUM >= 3:
+            screen.blit(card_p2.image, card_p2.pos)
+            pos_2.draw(screen)
+        if PLAYERS_NUM == 4:
+            screen.blit(card_p3.image, card_p3.pos)
+            pos_3.draw(screen)
+        pygame.display.flip()
         if pygame.key.get_pressed()[pygame.K_LEFT]:
             if deck.get(PLAYER_HAND[-1]).x >= 1200:
                 for card in PLAYER_HAND:
@@ -183,45 +345,59 @@ def main():
                 for card in PLAYER_HAND:
                     deck.get(card).x += 80
                     deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
-        if PLAYER_ID == PLAYER_TURN:
-            if pygame.mouse.get_pressed(3)[0]:
-                if deck_draw.click(pygame.mouse.get_pos()):
-                    deck_draw.req()
-                for card in PLAYER_HAND:
-                    if deck.get(card).click(pygame.mouse.get_pos()):
-                        deck.get(card).req()
-
-        screen.fill(black)
-
-        screen.blit(deck_draw.image, deck_draw.pos)
-        screen.blit(deck.get(LAST_DISCARD).image, deck.get(LAST_DISCARD).pos)
-        for card in PLAYER_HAND:
-            screen.blit(deck.get(card).image, deck.get(card).pos)
-        for btn in btns:
-            btn.draw(screen)
-
-        pygame.display.flip()
 
 
-def menu_screen():
+def color_choice(card):
     run = True
+    color_menu = pygame.display.set_mode(size)
+    blue_btn = Button("", 500, 270, (0,195,229), width=100, height=100, upd_color=False)
+    red_btn = Button("", 500, 370, (245,100,98), width=100, height=100, upd_color=False)
+    yellow_btn = Button("", 600, 270, (247,227,89), width=100, height=100, upd_color=False)
+    green_btn = Button("", 600, 370, (47,226,155), width=100, height=100, upd_color=False)
+    while run:
+        blue_btn.draw(color_menu)
+        red_btn.draw(color_menu)
+        yellow_btn.draw(color_menu)
+        green_btn.draw(color_menu)
+        font = pygame.font.SysFont('comicsans', 60)
+        text = font.render(f'Choice a color:', True, (255, 255, 255))
+        screen.blit(text, (500, 220))
+        pygame.display.update()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if blue_btn.click(pygame.mouse.get_pos()):
+                    card.color = 'blue_'
+                elif red_btn.click(pygame.mouse.get_pos()):
+                    card.color = 'red_'
+                elif yellow_btn.click(pygame.mouse.get_pos()):
+                    card.color = 'yellow_'
+                elif green_btn.click(pygame.mouse.get_pos()):
+                    card.color = 'green_'
+                run = False
 
+
+def menu():
+    global PLAYERS_NUM, MAX_PLAYERS
+    run = True
     while run:
         screen.fill((128, 128, 128))
         font = pygame.font.SysFont('comicsans', 60)
-        text = font.render('UNO'
-                           'Click to play', 1, (0,0,0))
-        screen.blit(text, (550, 340))
+        text = font.render(f'Waiting players...', True, (0,0,0))
+        status = font.render(f'({PLAYERS_NUM}/{MAX_PLAYERS})', 1, (0, 0, 0))
+        screen.blit(text, (450, 300))
+        screen.blit(status, (550, 340))
         pygame.display.update()
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 run = False
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                run = False
-    print(f'Abrindo a main')
-    main()
+        if PLAYERS_NUM == MAX_PLAYERS:
+            print('JANELA DO GAME')
+            game()
 
-main()
 
+client()
+time.sleep(1)
+menu()
