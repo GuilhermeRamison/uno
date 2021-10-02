@@ -33,8 +33,6 @@ def update_client(connection_socket=None, ID=None):
     global sockets_connected
     mes = dict()
 
-    __update_client_lock.acquire()
-
     if ID is not None:
         mes['ID'] = ID
     if connection_socket is not None:
@@ -52,20 +50,27 @@ def update_client(connection_socket=None, ID=None):
     else:
         connection_socket.send(json.dumps(mes).encode())
 
-    __update_client_lock.release()
-
 
 def server_client(connection_socket, ID):
 
     global current_move, sockets_connected
+    __update_client_lock.acquire()
     update_client(connection_socket, ID)
+    __update_client_lock.release()
+
     # Segura players pre game
+    __game_started.acquire()
     while not game.started:
+        __game_started.release()
         time.sleep(0.5)
+        __game_started.acquire()
+    __game_started.release()
 
     while game.started:
         print(f'Client {ID} here')
+        __update_client_lock.acquire()
         update_client(connection_socket, ID)
+        __update_client_lock.release()
         while game.player_turn != ID:
             time.sleep(0.5)
 
@@ -117,17 +122,6 @@ def server_client(connection_socket, ID):
         else:
             code = 'exit'
 
-        # Executa comandos
-        if not game.started:
-            if code == 'start':
-                __game_started.acquire()
-                game.started = True
-                __game_started.release()
-                print('Starting game...')
-
-        elif code.lower() == 'exit':
-            break
-
         __current_move_lock.acquire()
 
         current_move = (code, card)
@@ -163,7 +157,9 @@ def server():
         if game.num_players != 0:
             __game_started.release()
 
+        __update_client_lock.acquire()
         update_client()
+        __update_client_lock.release()
 
         print("Waiting for players, has current ", game.num_players, ' players...')
         client_socket, client_info = server_socket.accept()
@@ -178,12 +174,12 @@ def server():
         threads_in_execution[-1].start()
         time.sleep(0.1)
         __game_started.acquire()
-        print('Thread game acquired')
 
-    __game_started.release()
-    print('Thread game release')
+    __update_client_lock.acquire()
     game.start()
     update_client()
+    __game_started.release()
+    __update_client_lock.release()
 
     print('=== Game running ===')
     while game.started:
@@ -196,7 +192,9 @@ def server():
             print('Current move is: ', current_move)
             game.play(current_move[0], current_move[1])
             current_move = None
+            __update_client_lock.acquire()
             update_client()
+            __update_client_lock.release()
             __current_move_lock.release()
     # Reinicar game ***
 
