@@ -32,6 +32,9 @@ def update_client(connection_socket=None, ID=None):
     # Mensagem nova (usando dict)
     global sockets_connected
     mes = dict()
+
+    __update_client_lock.acquire()
+
     if ID is not None:
         mes['ID'] = ID
     if connection_socket is not None:
@@ -48,15 +51,16 @@ def update_client(connection_socket=None, ID=None):
             socket.send(json.dumps(mes).encode())
     else:
         connection_socket.send(json.dumps(mes).encode())
-    time.sleep(0.1)
+
+    __update_client_lock.release()
 
 
 def server_client(connection_socket, ID):
+
     global current_move, sockets_connected
     update_client(connection_socket, ID)
     # Segura players pre game
     while not game.started:
-        update_client()
         time.sleep(0.5)
 
     while game.started:
@@ -64,8 +68,8 @@ def server_client(connection_socket, ID):
         update_client(connection_socket, ID)
         while game.player_turn != ID:
             time.sleep(0.5)
-        update_client(connection_socket, ID)
-        print(f'Client {ID} here3')
+
+        print(f'Client {ID} here')
         print('Thread server_client waiting player ', ID, ' turn...')
         try:
             sentence = connection_socket.recv(1024)
@@ -127,16 +131,13 @@ def server_client(connection_socket, ID):
         __current_move_lock.acquire()
 
         current_move = (code, card)
-        # print('Current move is: ', current_move)
 
         __current_move_lock.release()
 
-        # Send back the process data
-        update_client(connection_socket, ID)
-        time.sleep(1.0)
+        time.sleep(0.2)
 
-    for socket in sockets_connected:
-        socket.close()
+    # for socket in sockets_connected:
+    #    socket.close()
 
 
 def server():
@@ -147,21 +148,22 @@ def server():
     game = Game()
 
     server_port = 8888
-    server_ip = "127.0.0.1"
+    server_ip = "192.168.0.14"
     server_socket = socket(AF_INET, SOCK_STREAM)
     server_socket.bind((server_ip, server_port))
     server_socket.listen(4)
-    server_socket.settimeout(60)
+    server_socket.settimeout(180)
 
     sockets_connected = []
     threads_in_execution = []
 
     # Espera por players
     while (not game.started) and (game.num_players < MAX_PLAYERS):
-        update_client()
+
         if game.num_players != 0:
             __game_started.release()
-            print('Thread game release')
+
+        update_client()
 
         print("Waiting for players, has current ", game.num_players, ' players...')
         client_socket, client_info = server_socket.accept()
@@ -181,6 +183,7 @@ def server():
     __game_started.release()
     print('Thread game release')
     game.start()
+    update_client()
 
     print('=== Game running ===')
     while game.started:
@@ -188,11 +191,12 @@ def server():
         if current_move is None:
             # print('Current move is: ', current_move)
             __current_move_lock.release()
-            time.sleep(0.2)
+            time.sleep(0.1)
         else:
             print('Current move is: ', current_move)
             game.play(current_move[0], current_move[1])
             current_move = None
+            update_client()
             __current_move_lock.release()
     # Reinicar game ***
 
@@ -275,7 +279,6 @@ class Game:
     def can_play(self, card):
         if self.draw_sum > 0:
             if self.discards[-2].wild is not None:
-                print(f'Penultima +4 {self.discards[-2].wild} riririri')
                 if 'wild_draw_four' in self.discards[-2].wild:
                     if card.wild is not None:
                         if 'wild_draw_four' in card.wild:
@@ -413,4 +416,5 @@ if __name__ == '__main__':
     game = Game()
     __current_move_lock = threading.Lock()
     __game_started = threading.Lock()
+    __update_client_lock = threading.Lock()
     server()

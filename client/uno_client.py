@@ -10,7 +10,7 @@ if len(sys.argv) > 1:
     SERVER_IP = sys.argv[1]
     SERVER_PORT = int(sys.argv[2])
 else:
-    SERVER_IP = '127.0.0.1'
+    SERVER_IP = '192.168.0.14'
     SERVER_PORT = 8888
 
 
