@@ -10,7 +10,7 @@ if len(sys.argv) > 1:
     SERVER_IP = sys.argv[1]
     SERVER_PORT = int(sys.argv[2])
 else:
-    SERVER_IP = '192.168.0.14'
+    SERVER_IP = '127.0.0.1'
     SERVER_PORT = 8888
 
 
@@ -25,7 +25,7 @@ LAST_DISCARD = None
 PLAYER_HAND = []
 DRAW_SUM = 0
 ERR = None
-MAX_PLAYERS = 4
+MAX_PLAYERS = 2
 
 
 # PROTOCOL
@@ -44,7 +44,7 @@ def update_consts(res):
     eval(PLAYERS_NUM)
     eval(P_NUM_CARDS)'''
     # update novo
-    global PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS,DRAW_SUM
+    global PLAYER_ID, PLAYER_TURN, PLAYER_HAND, LAST_DISCARD, PLAYERS_NUM, P_NUM_CARDS,DRAW_SUM, MAX_PLAYERS
     res_dict = json.loads(res)
     if 'ID' in res_dict:
         PLAYER_ID = res_dict.get('ID')
@@ -56,6 +56,7 @@ def update_consts(res):
     PLAYERS_NUM = res_dict.get('PNUM')
     P_NUM_CARDS = res_dict.get('PNUMC')
     DRAW_SUM = res_dict.get('DRS')
+    MAX_PLAYERS = res_dict.get('MAX')
 
 
 def server_output(client_socket):
@@ -136,7 +137,7 @@ class Card:
 
 
 class Button:
-    def __init__(self, text, x, y, color=(0, 0, 0), width=100, height=30, p_id=0, upd_color=True, is_rect=True):
+    def __init__(self, text, x, y, color=(0, 0, 0), width=160, height=30, p_id=0, upd_color=True, is_rect=True, tam=25):
         self.text = text
         self.x = x
         self.y = y
@@ -146,6 +147,7 @@ class Button:
         self.p_id = p_id
         self.is_rect = is_rect
         self.upd_color = upd_color
+        self.tam = tam
 
     def draw(self, win):
         global PLAYER_TURN
@@ -157,7 +159,7 @@ class Button:
             pygame.draw.rect(win, color, (self.x, self.y, self.width, self.height))
         else:
             pygame.draw.circle(screen, (255, 0, 0), (600, 360), 60)
-        font = pygame.font.SysFont("comicsans", 25)
+        font = pygame.font.SysFont("comicsans", self.tam)
         text = font.render(self.text, 1, (255,255,255))
         win.blit(text, (self.x + round(self.width/2) - round(text.get_width()/2), self.y + round(self.height/2) - round(text.get_height()/2)))
 
@@ -203,11 +205,11 @@ cards_p_image3 = pygame.image.load("images/card_back_alt3.png")
 card_p1 = Card('card_p1', None, cards_p_image1, x=535, y=0)
 card_p2 = Card('card_p2', None, cards_p_image2, x=0, y=295)
 card_p3 = Card('card_p3', None, cards_p_image3, x=1017, y=295)
-draw_count = Button("+0", 600, 360, (255, 0, 0), is_rect=False)
-pos_0 = Button("Player 0 || 7 Cards", 545, 500, (0, 0, 0), p_id=0)
-pos_1 = Button("Player 1 || 7 Cards", 545, 190, (0, 0, 0), p_id=1)
-pos_2 = Button("Player 2 || 7 Cards", 45, 260, (0, 0, 0), p_id=2)
-pos_3 = Button("Player 3 || 7 Cards", 1045, 260, (0, 0, 0), p_id=3)
+draw_count = Button("+0", 535, 300, (255, 0, 0), width=120, height=120,  is_rect=False, tam=50)
+pos_0 = Button("Player 0 || 7 Cards", 520, 500, (0, 0, 0), p_id=0)
+pos_1 = Button("Player 1 || 7 Cards", 520, 190, (0, 0, 0), p_id=1)
+pos_2 = Button("Player 2 || 7 Cards", 20, 260, (0, 0, 0), p_id=2)
+pos_3 = Button("Player 3 || 7 Cards", 1020, 260, (0, 0, 0), p_id=3)
 pos_btns = [pos_0, pos_1, pos_2, pos_3]
 
 
@@ -217,11 +219,11 @@ def def_pos_info(btns):
         if PLAYER_ID == 0:
             btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
             btns[0].p_id = 0
-            btns[1].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
-            btns[1].p_id = 2
+            btns[1].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
+            btns[1].p_id = 1
             if MAX_PLAYERS >= 3:
-                btns[2].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
-                btns[2].p_id = 1
+                btns[2].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
+                btns[2].p_id = 2
             if MAX_PLAYERS >= 4:
                 btns[3].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
                 btns[3].p_id = 3
@@ -230,25 +232,25 @@ def def_pos_info(btns):
             print(P_NUM_CARDS[PLAYER_ID])
             btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
             btns[0].p_id = 1
-            btns[1].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
-            btns[1].p_id = 3
+            btns[1].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
+            btns[1].p_id = 0
             if MAX_PLAYERS >= 3:
                 btns[2].text = f'Player 2 || {P_NUM_CARDS[2]} Cards'
                 btns[2].p_id = 2
             if MAX_PLAYERS >= 4:
-                btns[3].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
-                btns[3].p_id = 0
+                btns[3].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
+                btns[3].p_id = 3
         elif PLAYER_ID == 2:
             btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
             btns[0].p_id = 2
             btns[1].text = f'Player 0 || {P_NUM_CARDS[0]} Cards'
             btns[1].p_id = 0
             if MAX_PLAYERS >= 3:
-                btns[2].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
-                btns[2].p_id = 3
+                btns[2].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
+                btns[2].p_id = 1
             if MAX_PLAYERS >= 4:
-                btns[3].text = f'Player 1 || {P_NUM_CARDS[1]} Cards'
-                btns[3].p_id = 1
+                btns[3].text = f'Player 3 || {P_NUM_CARDS[3]} Cards'
+                btns[3].p_id = 3
         elif PLAYER_ID == 3:
             btns[0].text = f'Player {PLAYER_ID} || {P_NUM_CARDS[PLAYER_ID]} Cards'
             btns[0].p_id = 3
@@ -275,7 +277,7 @@ def winner_screen():
     run = True
     color_menu = pygame.display.set_mode(size)
     while run:
-        p_win = Button(f'Player {PLAYER_ID} win!', 575, 357, (255, 0, 0))
+        p_win = Button(f'Player {PLAYER_ID} win!', 575, 357, (255, 0, 0), tam=60)
         p_win.draw(color_menu)
         pygame.display.update()
         for event in pygame.event.get():
@@ -305,6 +307,16 @@ def game():
                                 req(deck.get(card))
             if event.type == pygame.QUIT:
                 sys.exit()
+            if pygame.key.get_pressed()[pygame.K_LEFT]:
+                if deck.get(PLAYER_HAND[-1]).x >= 1200:
+                    for card in PLAYER_HAND:
+                        deck.get(card).x -= 80
+                        deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
+            if pygame.key.get_pressed()[pygame.K_RIGHT]:
+                if deck[PLAYER_HAND[0]].x < 0:
+                    for card in PLAYER_HAND:
+                        deck.get(card).x += 80
+                        deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
         if winner() != -1:
             winner_screen()
             run = False
@@ -335,17 +347,6 @@ def game():
             screen.blit(card_p3.image, card_p3.pos)
             pos_3.draw(screen)
         pygame.display.flip()
-        if pygame.key.get_pressed()[pygame.K_LEFT]:
-            if deck.get(PLAYER_HAND[-1]).x >= 1200:
-                for card in PLAYER_HAND:
-                    deck.get(card).x -= 80
-                    deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
-        if pygame.key.get_pressed()[pygame.K_RIGHT]:
-            if deck[PLAYER_HAND[0]].x < 0:
-                for card in PLAYER_HAND:
-                    deck.get(card).x += 80
-                    deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
-
 
 def color_choice(card):
     run = True
@@ -399,5 +400,5 @@ def menu():
 
 
 client()
-time.sleep(1)
+time.sleep(0.5)
 menu()

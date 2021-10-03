@@ -6,10 +6,16 @@ from socket import *
 import sys
 import json
 
-if len(sys.argv) != 1:
-    MAX_PLAYERS = sys.argv[1]
+
+if len(sys.argv) > 1:
+    MAX_PLAYERS = int(sys.argv[1])
+    server_ip = sys.argv[2]
+    server_port = int(sys.argv[3])
 else:
-    MAX_PLAYERS = 4
+    MAX_PLAYERS = 2
+    server_ip = '127.0.0.1'
+    server_port = 8888
+
 # Global current move
 current_move = None
 
@@ -43,6 +49,7 @@ def update_client(connection_socket=None, ID=None):
     mes['PNUM'] = game.num_players
     mes['PNUMC'] = game.att_ncards_players()
     mes['DRS'] = game.draw_sum
+    mes['MAX'] = MAX_PLAYERS
 
     if connection_socket is None:
         for socket in sockets_connected:
@@ -141,8 +148,6 @@ def server():
     global sockets_connected
     game = Game()
 
-    server_port = 8888
-    server_ip = "192.168.0.14"
     server_socket = socket(AF_INET, SOCK_STREAM)
     server_socket.bind((server_ip, server_port))
     server_socket.listen(4)
@@ -208,7 +213,7 @@ class Game:
         self.play_direction = 1
 
         self.started = False
-        self.max_players = 4
+        self.max_players = MAX_PLAYERS
         self.draw_sum = 0
         self.tunr_list = [x for x in range(self.max_players)]
 
@@ -269,7 +274,7 @@ class Game:
         else:
             next_player = self.player_turn + (1 * self.play_direction)
             if next_player < 0:
-                next_player = self.max_players -1
+                next_player = self.max_players - 1
             elif next_player > (self.max_players - 1):
                 next_player = 0
         self.player_turn = next_player
