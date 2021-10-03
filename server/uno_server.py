@@ -95,8 +95,7 @@ def server_client(connection_socket, ID):
 
         # Byte -> String
         sentence = sentence.decode()
-        if len(sentence.split(',')) < 3:
-            connection_socket.send('Invalid syntax of uno protocol.'.encode())
+        if len(sentence.split(',')) < 3 or len(sentence.split(',')) > 3:
             continue
 
         # SKIP: 0,

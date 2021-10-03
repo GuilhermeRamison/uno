@@ -273,11 +273,11 @@ def winner():
     return -1
 
 
-def winner_screen():
+def winner_screen(winner):
     run = True
     color_menu = pygame.display.set_mode(size)
+    p_win = Button(f'Player {winner} win!', 575, 357, (255, 0, 0), tam=60)
     while run:
-        p_win = Button(f'Player {PLAYER_ID} win!', 575, 357, (255, 0, 0), tam=60)
         p_win.draw(color_menu)
         pygame.display.update()
         for event in pygame.event.get():
@@ -317,9 +317,11 @@ def game():
                     for card in PLAYER_HAND:
                         deck.get(card).x += 80
                         deck.get(card).pos.update(tuple(map(operator.sub, (deck.get(card).x, 537), (0, 0))), [130, 182])
-        if winner() != -1:
-            winner_screen()
-            run = False
+        for c in P_NUM_CARDS:
+            if c == 0:
+                winner_screen(P_NUM_CARDS.index(c))
+                run = False
+                break
 
         deck.get(LAST_DISCARD).pos.update((400, 249), [130, 182])
         i = 0
@@ -395,9 +397,8 @@ def menu():
                 pygame.quit()
                 run = False
         if PLAYERS_NUM == MAX_PLAYERS:
-            print('JANELA DO GAME')
             game()
-
+            #run = False
 
 client()
 time.sleep(0.5)
