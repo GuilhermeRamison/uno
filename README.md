@@ -14,7 +14,7 @@ pip install -r requirements.txt
 ````buildoutcfg
 cd server 
 ````
-#####Parâmetros _uno_server.py_ <NUM_PLAYERS> <IP> <PORT>
+######Parâmetros _uno_server.py_ <NUM_PLAYERS> <IP> <PORT>
 ````buildoutcfg
 python uno_server.py 2 127.0.0.1 8888
 ````
@@ -23,7 +23,7 @@ python uno_server.py 2 127.0.0.1 8888
 ````buildoutcfg
 cd client
 ````
-#####Parâmetros _uno_client.py_ <IP> <PORTA>
+######Parâmetros _uno_client.py_ <IP> <PORTA>
 `````buildoutcfg
 python uno_client.py 127.0.0.1 8888
 `````
