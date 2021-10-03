@@ -10,22 +10,21 @@ O propósito é fazer uma aplicação usando os conceitos aprendidos em aula. O 
 ````buildoutcfg
 pip install -r requirements.txt
 ````
-
 2.Da pasta raiz, vá para _server_ e execute _uno_server.py_
 ````buildoutcfg
 cd server 
 ````
+#####Parâmetros _uno_server.py_ <NUM_PLAYERS> <IP> <PORT>
 ````buildoutcfg
-python uno_server.py <NUM_PLAYERS> <IP> <PORT>
+python uno_server.py 2 127.0.0.1 8888
 ````
 ###### Se não passar os argumentos, o _default_ é <2> <127.0.0.1> <8888>
 3.Da pasta raiz, vá para _client_ e execute _uno_client.py_
 ````buildoutcfg
 cd client
 ````
+#####Parâmetros _uno_client.py_ <IP> <PORTA>
 `````buildoutcfg
-python uno_client.py <IP> <PORTA>
+python uno_client.py 127.0.0.1 8888
 `````
-
-
 ###### Se não passar os argumentos, o _default_ é <127.0.0.1> <8888>
